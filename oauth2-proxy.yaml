@@ -1,0 +1,129 @@
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: oauth2-proxy
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+    - http:
+        paths:
+          - backend:
+              serviceName: oauth2-proxy-cluster-ip
+              servicePort: 4180
+            path: /oauth2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oauth2-proxy
+type: Opaque
+stringData:
+  OAUTH2_PROXY_CLIENT_ID: vindr-viewer
+  OAUTH2_PROXY_CLIENT_SECRET: 50f5eff9-1126-4f21-b158-ad4dc6031ffb
+  OAUTH2_PROXY_COOKIE_SECRET: vd41U1tXg4NGYflCoB67hA==
+  OAUTH2_PROXY_KEYCLOAK_GROUP: /physician
+  OAUTH2_PROXY_LOGIN_URL: http://172.22.47.94/auth/realms/VinDr/protocol/openid-connect/auth
+  OAUTH2_PROXY_REDEEM_URL: http://172.22.47.94/auth/realms/VinDr/protocol/openid-connect/token
+  OAUTH2_PROXY_VALIDATE_URL: http://172.22.47.94/auth/realms/VinDr/protocol/openid-connect/userinfo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: oauth2-proxy
+  name: oauth2-proxy-cluster-ip
+spec:
+  ports:
+    - name: http
+      port: 4180
+      protocol: TCP
+      targetPort: 4180
+  selector:
+    app: oauth2-proxy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: oauth2-proxy
+  name: oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          args:
+            - --provider=oidc
+            - --provider-display-name=My OIDC Provider
+            - --email-domain=*
+            - --upstream=file:///dev/null
+            - --http-address=0.0.0.0:4180
+            - --redirect-url=http://172.22.47.94/oauth2/callback
+            - --oidc-issuer-url=http://172.22.47.94/auth/realms/VinDr
+            # - --pass-access-token=false
+            # - --pass-authorization-header=false
+            # - --pass-basic-auth=false
+            # - --pass-host-header=true
+            # - --pass-user-headers=true
+            # - --set-authorization-header=true
+            # - --set-basic-auth=false
+            - --set-xauthrequest=true
+            - --standard-logging=true
+            - --auth-logging=true
+            - --request-logging=true
+            # - --skip-provider-button=true
+            # - --skip-auth-preflight=true
+            - --cookie-domain=172.22.47.94
+            - --cookie-secure=false
+            - --scope=openid
+            - --session-store-type=redis
+            - --redis-connection-url=redis://oauth2-proxy-redis-cluster-ip:6379
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: OAUTH2_PROXY_CLIENT_ID
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: OAUTH2_PROXY_CLIENT_SECRET
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: OAUTH2_PROXY_COOKIE_SECRET
+            # - name: OAUTH2_PROXY_KEYCLOAK_GROUP
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: oauth2-proxy
+            #       key: OAUTH2_PROXY_KEYCLOAK_GROUP
+            # - name: OAUTH2_PROXY_LOGIN_URL
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: oauth2-proxy
+            #       key: OAUTH2_PROXY_LOGIN_URL
+            # - name: OAUTH2_PROXY_REDEEM_URL
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: oauth2-proxy
+            #       key: OAUTH2_PROXY_REDEEM_URL
+            # - name: OAUTH2_PROXY_VALIDATE_URL
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: oauth2-proxy
+            #       key: OAUTH2_PROXY_VALIDATE_URL
+          image: bitnami/oauth2-proxy
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4180
+              protocol: TCP

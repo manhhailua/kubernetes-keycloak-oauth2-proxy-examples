@@ -1,0 +1,101 @@
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: keycloak
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+    - http:
+        paths:
+          - backend:
+              serviceName: keycloak-cluster-ip
+              servicePort: 8080
+            path: /auth
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak
+type: Opaque
+stringData:
+  KEYCLOAK_USER: admin
+  KEYCLOAK_PASSWORD: admin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-cluster-ip
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: keycloak
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      volumes:
+        - name: keycloak-realm-volume
+          configMap:
+            name: keycloak-realm
+      containers:
+        - name: keycloak
+          image: jboss/keycloak
+          env:
+            - name: KEYCLOAK_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak
+                  key: KEYCLOAK_USER
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak
+                  key: KEYCLOAK_PASSWORD
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgresql
+                  key: POSTGRESQL_DATABASE
+            - name: POSTGRESQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgresql
+                  key: POSTGRESQL_USERNAME
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-postgresql
+                  key: POSTGRESQL_PASSWORD
+            - name: PROXY_ADDRESS_FORWARDING
+              value: "true"
+            - name: KEYCLOAK_IMPORT
+              value: /tmp/realm.json
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: https
+              containerPort: 8443
+          volumeMounts:
+            - name: keycloak-realm-volume
+              mountPath: /tmp/realm.json
+              subPath: realm.json
+          readinessProbe:
+            httpGet:
+              path: /auth/realms/VinDr
+              port: 8080
